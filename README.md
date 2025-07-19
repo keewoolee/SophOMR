@@ -2,10 +2,6 @@
 
 This is a proof of concept implementation of SophOMR, an oblivious message retrieval scheme.
 
-### Contributors
-- Keewoo Lee (UC Berkeley)
-- Yongdong Yeo (Seoul National University)
-
 ## To Build 
 
 (based on Ubuntu 20.04 LTS)
@@ -15,7 +11,7 @@ This is a proof of concept implementation of SophOMR, an oblivious message retri
 - CMake build infrastructure
 - [NTL](https://libntl.org/) library
 - [OpenFHE](https://github.com/openfheorg/openfhe-development) library (tested with v1.2.0)
-- [HEXL](https://github.com/intel/hexl) library
+- [HEXL](https://github.com/intel/hexl) library (HEXL backend is optimized for processors with AVX512_IFMA support, e.g., IceLake.)
 
 ⚠️ To implement ring-switching, we use OpenFHE in a manner not officially supported by its APIs, which may be incompatible with OpenFHE versions beyond 1.2.0.
 
