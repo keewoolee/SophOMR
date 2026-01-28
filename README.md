@@ -56,7 +56,7 @@ cmake .. -DCMAKE_PREFIX_PATH=~/openfhe-configurator/openfhe-staging/install # ad
 make
 ```
 
-4. Basic test. This runs the fastest predefined configuration (approximately 1-2 compute-minutes). On success, the final line of the output will be: `Result is Correct!`
+4. Basic test. This runs the fastest predefined configuration (1-2 compute-minutes). On success, the final line of the output will be: `Result is Correct!`
 
 ```
 ./test OMD 65536 16
