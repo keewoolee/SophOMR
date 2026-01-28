@@ -8,27 +8,27 @@ This is a proof of concept implementation of SophOMR, an oblivious message retri
 
 ## To Build 
 
-(based on Ubuntu 20.04 LTS)
+(based on Ubuntu 24.04 LTS)
 
 ### Dependencies
 - C++ build environment
 - CMake build infrastructure
 - [NTL](https://libntl.org/) library
-- [OpenFHE](https://github.com/openfheorg/openfhe-development) library (tested with v1.2.0)
-- [HEXL](https://github.com/intel/hexl) library (HEXL backend is optimized for processors with AVX512_IFMA support, e.g., IceLake.)
+- [OpenFHE](https://github.com/openfheorg/openfhe-development) library (tested with v1.4.0)
+- [HEXL](https://github.com/intel/hexl) library (HEXL backend is optimized for processors with AVX512_IFMA support, e.g., Intel IceLake.)
 
-⚠️ To implement ring-switching, we use OpenFHE in a manner not officially supported by its APIs, which may be incompatible with OpenFHE versions beyond 1.2.0.
+⚠️ To implement ring-switching, we use OpenFHE in a manner not officially supported by its APIs, which may be incompatible with OpenFHE versions beyond 1.4.0.
 
 ### Scripts to install the dependencies and build the library
 
 1. Install CMake, GMP, and NTL (if needed).
 
 ```
-sudo apt-get update 
-sudo apt-get install build-essential 
-sudo apt-get install cmake 
-sudo apt-get install libgmp3-dev 
-sudo apt-get install libntl-dev 
+sudo apt-get update
+sudo apt-get install build-essential
+sudo apt-get install cmake
+sudo apt-get install libgmp3-dev
+sudo apt-get install libntl-dev
 ```
 
 2. Install [OpenFHE + HEXL](https://github.com/openfheorg/openfhe-hexl) by following the instruction in the link, or run:
@@ -47,13 +47,16 @@ sudo scripts/build-openfhe-development.sh
 3. Build the library.
 
 ```
+cd ..  # if still in openfhe-configurator directory
+git clone https://github.com/keewoolee/SophOMR.git  # clone this repository
+cd SophOMR
 mkdir build
 cd build
 cmake .. -DCMAKE_PREFIX_PATH=~/openfhe-configurator/openfhe-staging/install # adjust the path to the location of the openfhe libraries
 make
 ```
 
-4. Basic test. This runs the fastest predefined configuration (approximately 1-2 minutes). On success, the final line of the output will be: `Result is Correct!`
+4. Basic test. This runs the fastest predefined configuration (approximately 1-2 compute-minutes). On success, the final line of the output will be: `Result is Correct!`
 
 ```
 ./test OMD 65536 16
@@ -61,7 +64,7 @@ make
 
 ## To Run
 
-- To run all benchmarks presented in the paper:
+- To run all benchmarks presented in the paper (6-7 compute-hours):
 ```
 cd ..  # if still in build directory
 python3 -u benchmark.py > benchmark.txt 2>&1
