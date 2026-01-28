@@ -1,30 +1,10 @@
-cmake_minimum_required (VERSION 3.5.1)
-
-### To use gcc/g++ on a Macintosh, you must set the Compilers
-### here, not inside the project
-##if(APPLE)
-##       set(CMAKE_C_COMPILER "/usr/local/bin/gcc-7")
-##       set(CMAKE_CXX_COMPILER "/usr/local/bin/g++-7")
-##endif()
-### TODO: for now, we use CLang for Mac
-###
-### In order to create OpenFHE's static libraries you should enable
-### the BUILD_STATIC option. For that, you run "cmake .. -DBUILD_STATIC=ON".
-### After having your link completed you will find static libs
-### with the suffix "_static" in ./build/libs/.
-### Examples: OPENFHEpke_static.a, OPENFHEcore_static.a, etc.
-### After you run "make install" in your build directory, you can build your custom application.
-### If you need your application to be linked statically, then run "cmake .. -DBUILD_STATIC=ON"
+cmake_minimum_required(VERSION 3.16.3)
 
 project(demo CXX)
 set(CMAKE_CXX_STANDARD 17)
 option( BUILD_STATIC "Set to ON to include static versions of the library" OFF)
 
-### pass a value for OPENFHE_INSTALL_DIR if there is an issue locatig the correct package
-### EXAMPLE:
-### cmake -DOPENFHE_INSTALL_DIR=[PATH TO OpennFHE] ..
-
-find_package(OpenFHE CONFIG HINTS ${OPENFHE_INSTALL_DIR} REQUIRED)
+find_package(OpenFHE CONFIG HINTS REQUIRED)
 if (OpenFHE_FOUND)
     message(STATUS "FOUND PACKAGE OpenFHE")
     message(STATUS "OpenFHE Version: ${BASE_OPENFHE_VERSION}")
@@ -48,8 +28,12 @@ include_directories( ${OpenFHE_INCLUDE}/core/include )
 include_directories( ${OpenFHE_INCLUDE}/pke )
 include_directories( ${OpenFHE_INCLUDE}/binfhe )
 
+if(UNIX AND NOT APPLE)
+    add_link_options(-Wl,--no-as-needed)
+endif()
+
 if (OpenFHE_WITH_INTEL_HEXL)
-    find_package(HEXL 1.2.5 HINTS ${OpenFHE_INTEL_HEXL_HINT_DIR} REQUIRED)
+    find_package(HEXL HINTS ${OpenFHE_INTEL_HEXL_HINT_DIR} REQUIRED)
     if (NOT TARGET HEXL::hexl)
         message(FATAL_ERROR, "Intel HEXL not found")
     endif()
@@ -63,8 +47,6 @@ if (OpenFHE_WITH_INTEL_HEXL)
     include_directories(${INTEL_HEXL_INCLUDE_DIR})
 endif()
 
-### add directories for other OpenFHE modules as needed for your project
-
 link_directories( ${OpenFHE_LIBDIR} )
 link_directories( ${OPENMP_LIBRARIES} )
 if(BUILD_STATIC)
@@ -75,5 +57,19 @@ else()
     link_libraries( ${OpenFHE_SHARED_LIBRARIES} )
 endif()
 
-add_executable( test main.cpp )
-target_link_libraries( test ntl m gmp )
+file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/data)
+
+include_directories( ${CMAKE_SOURCE_DIR}/include )
+
+add_executable( test
+    main.cpp
+    src/global.cpp
+    src/param.cpp
+    src/signal.cpp
+    src/setup.cpp
+    src/detect.cpp
+    src/compress.cpp
+    src/decode.cpp
+    src/sophomr.cpp
+)
+target_link_libraries( test ntl gmp m )

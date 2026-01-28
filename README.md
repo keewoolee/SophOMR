@@ -45,25 +45,59 @@ sudo scripts/build-openfhe-development.sh
 ```
 mkdir build
 cd build
-mkdir data
 cmake .. -DCMAKE_PREFIX_PATH=~/openfhe-configurator/openfhe-staging/install # adjust the path to the location of the openfhe libraries
 make
 ```
 
+4. Basic test. This runs the fastest predefined configuration (approximately 1-2 minutes). On success, the final line of the output will be: `Result is Correct!`
+
+```
+./test OMD 65536 16
+```
+
 ## To Run
 
-- Make sure that the directory `/build/data` exists.
+- To run all benchmarks presented in the paper:
+```
+cd ..  # if still in build directory
+python3 -u benchmark.py > benchmark.txt 2>&1
+```
+
 - To run with predefined parameters:
 ```
-# ./test <OMR/OMD> <number_of_payloads> <number_of_pertinent_payloads>
-./test OMR 65536 50
+# ./test OMR <N> <k> <t>    (OMR requires payload size t)
+# ./test OMD <N> <k>        (OMD has no payload)
+# N: number of transactions
+# k: number of pertinent messages
+# t: payload size parameter
+
+# Default configurations
+./test OMR 65536 50 250
 ./test OMD 65536 50
-./test OMR 524288 50
+./test OMR 524288 50 250
 ./test OMD 524288 50
+
+# OMR: Varying t
+./test OMR 65536 50 64
+./test OMR 65536 50 128
+./test OMR 65536 50 256
+./test OMR 65536 50 512
+
+# OMR: Varying k
+./test OMR 65536 16 250
+./test OMR 65536 32 250
+./test OMR 65536 64 250
+./test OMR 65536 128 250
+
+# OMD: Varying k
+./test OMD 65536 16
+./test OMD 65536 32
+./test OMD 65536 64
+./test OMD 65536 128
 ```
 
 - To run with custom parameters (Recommended only if you are sufficiently knowledgeable, as custom parameters may result in incorrect, insecure, or inefficient outcomes.):
 ```
-# Customize the parameters in global.h. (Preset to parameters for "./test OMR 65536 50")
+# Customize the parameters in global.h. (Preset to parameters for "./test OMR 65536 50 250")
 ./test
 ```
