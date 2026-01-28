@@ -2,6 +2,10 @@
 
 This is a proof of concept implementation of SophOMR, an oblivious message retrieval scheme.
 
+### Contributors
+- Keewoo Lee (Ethereum Foundation)
+- Yongdong Yeo (Seoul National University)
+
 ## To Build 
 
 (based on Ubuntu 20.04 LTS)

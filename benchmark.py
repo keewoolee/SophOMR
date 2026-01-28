@@ -6,7 +6,7 @@ Runs experiments multiple times and outputs formatted results for paper tables/f
 
 import subprocess
 import re
-import numpy as np
+import statistics
 from dataclasses import dataclass
 
 NUM_RUNS = 5
@@ -30,10 +30,9 @@ class Stats:
 
 
 def compute_stats(values: list[float]) -> Stats:
-    arr = np.array(values)
     return Stats(
-        mean=arr.mean(),
-        std=arr.std(ddof=1) if len(arr) > 1 else 0.0
+        mean=statistics.mean(values),
+        std=statistics.stdev(values) if len(values) > 1 else 0.0
     )
 
 
