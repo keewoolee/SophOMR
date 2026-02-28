@@ -8,14 +8,15 @@ This is a proof of concept implementation of SophOMR, an oblivious message retri
 
 ## To Build 
 
-(based on Ubuntu 24.04 LTS)
+(based on Ubuntu 24.04 LTS with x86-64)
 
 ### Dependencies
 - C++ build environment
 - CMake build infrastructure
 - [NTL](https://libntl.org/) library
 - [OpenFHE](https://github.com/openfheorg/openfhe-development) library (tested with v1.4.0)
-- [HEXL](https://github.com/intel/hexl) library (HEXL backend is optimized for processors with AVX512_IFMA support, e.g., Intel IceLake.)
+- [HEXL](https://github.com/intel/hexl) library (Optional; Skip on ARM) 
+  - HEXL backend is optimized for processors with AVX512_IFMA support, e.g., Intel IceLake.
 
 ⚠️ To implement ring-switching, we use OpenFHE in a manner not officially supported by its APIs, which may be incompatible with OpenFHE versions beyond 1.4.0.
 
@@ -38,7 +39,7 @@ git clone https://github.com/openfheorg/openfhe-configurator.git
 cd openfhe-configurator
 scripts/configure.sh
 
-# Would you like to stage an openfhe-development build?     [y/n] : n
+# Would you like to stage an openfhe-development build?     [y/n] : n  (y on ARM)
 # Would you like to stage an openfhe-hexl build?            [y/n] : y
 
 sudo scripts/build-openfhe-development.sh
