@@ -29,14 +29,14 @@ class Stats:
         return f"{self.mean:.1f} ± {self.std:.1f}"
 
 
-def compute_stats(values: list[float]) -> Stats:
+def compute_stats(values):
     return Stats(
         mean=statistics.mean(values),
         std=statistics.stdev(values) if len(values) > 1 else 0.0
     )
 
 
-def run_benchmark(scheme: str, N: int, k: int, t: int = None) -> dict[str, Stats]:
+def run_benchmark(scheme, N, k, t=None):
     """Run benchmark NUM_RUNS times and return statistics for each metric."""
 
     # Build command - OMD doesn't need t parameter
