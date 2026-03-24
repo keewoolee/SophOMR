@@ -39,8 +39,7 @@ void sophomr() {
 
     CCParams<CryptoContextBFVRNS> BFVparam;
     initBFVparam(BFVparam);
-
-    CryptoContext<DCRTPoly> context = GenCryptoContext(BFVparam);
+    auto context = GenCryptoContext(BFVparam);
     enable(context);
 
     auto keyPair = context->KeyGen();
@@ -53,20 +52,24 @@ void sophomr() {
                 1-3. HE Setup (Compression & Ring-Switching)
     */
 
-    BFVparam.SetNumLargeDigits(NumLargeDigits_comp);
-    BFVparam.SetMultiplicativeDepth(MultiplicativeDepth_comp);
-    CryptoContext<DCRTPoly> context_comp = GenCryptoContext(BFVparam);
-    enable(context_comp);
-    auto keyPair_comp = context_comp->KeyGen();
+    injectCompatibleRoot();
 
-	BFVparam.SetRingDim(degree_trace);
-    CryptoContext<DCRTPoly> context_trace = GenCryptoContext(BFVparam);
+    CCParams<CryptoContextBFVRNS> BFVparam_comp;
+    initBFVparam_comp(BFVparam_comp);
+    auto context_comp = GenCryptoContext(BFVparam_comp);
+    enable(context_comp);
+
+    CCParams<CryptoContextBFVRNS> BFVparam_trace;
+    initBFVparam_trace(BFVparam_trace);
+    auto context_trace = GenCryptoContextWithModuliFrom(BFVparam_trace, context_comp);
     enable(context_trace);
+
+    auto keyPair_comp = context_comp->KeyGen();
     auto keyPair_trace = context_trace->KeyGen();
 
-	liftsk(keyPair_comp, keyPair_trace);
+    liftsk(keyPair_comp, keyPair_trace);
 
-	auto swk = context->GetScheme()->KeySwitchGen(keyPair.secretKey, keyPair_comp.secretKey);
+    auto swk = context->GetScheme()->KeySwitchGen(keyPair.secretKey, keyPair_comp.secretKey);
 
     vector<int> step_comp = {1, b_tilde2, degree_half, degree_trace_half};
     for (int j = 1; j < degree_half / numrow_po2; j*=2) {
@@ -74,7 +77,6 @@ void sophomr() {
     }
     context_comp->EvalRotateKeyGen(keyPair_comp.secretKey, step_comp);
 
-    updateTraceInfo(context_comp, context_trace, keyPair_comp, keyPair_trace);
 
 
     cout << "Setup Finished!\n" << endl;
@@ -94,15 +96,7 @@ void sophomr() {
 
     cout << "2. Payload & Signal Simulation Started!\n" << endl;
 
-    vector<vector<uint32_t>> payloads(num_transaction,vector<uint32_t>(payload_len));
-    simulatePayloads(payloads);
-
-    vector<int> pertinentIdx;
-    sampleIdx(pertinentIdx);
-
-    vector<vector<uint64_t>> signals_a(num_transaction,vector<uint64_t>(PSparam.n));
-    vector<vector<uint64_t>> signals_b(num_transaction,vector<uint64_t>(PSparam.ell));
-    simulateSignals(signals_a, signals_b, pertinentIdx, PSpk);
+    auto testData = generateTestData(PSpk);
 
     cout << "Payload & Signal Simulation Finished!\n" << endl;
 
@@ -125,9 +119,7 @@ void sophomr() {
     cout << "\t 3-1. Detection Started!\n" << endl;
     clock_start = chrono::high_resolution_clock::now();
 
-    vector<Ciphertext<DCRTPoly>> PV(numctxt);
-
-    detect(PV, signals_a, signals_b, context, PSsk_enc, swk);
+    auto PV = detect(testData.signals, PSsk_enc);
 
     clock_end = chrono::high_resolution_clock::now();
     cout << "\t Detection Finished!" << endl;
@@ -140,9 +132,7 @@ void sophomr() {
     cout << "\t 3-2. Compression Started!\n" << endl;
     clock_start = chrono::high_resolution_clock::now();
 
-    Ciphertext<DCRTPoly> digest;
-
-    compress(digest, PV, payloads, context_comp, context_trace, keyPair_comp.publicKey, keyPair_trace.publicKey, keyPair_comp.secretKey);
+    auto digest = compress(PV, testData.payloads, context_comp, context_trace, swk, keyPair_trace.publicKey->GetKeyTag());
 
     clock_end = chrono::high_resolution_clock::now();
     cout << "\t Compression Finished!" << endl;
@@ -163,14 +153,11 @@ void sophomr() {
     cout << "4. Client-side Decoding\n" << endl;
     clock_start = chrono::high_resolution_clock::now();
 
-    vector<int> decodedIdx;
-    vector<vector<uint32_t>> decodedPayload;
-
-    decode(decodedIdx, decodedPayload, digest, context_trace, keyPair_trace.secretKey);
+    auto decoded = decode(digest, keyPair_trace.secretKey);
 
     clock_end = chrono::high_resolution_clock::now();
     cout << "Client-side Decoding Finished!" << endl;
     cout << "Client-side Decoding Time: " << chrono::duration<double, milli>(clock_end - clock_start).count() << "ms\n" << endl;
 
-    checkResult(decodedIdx, decodedPayload, pertinentIdx, payloads);
+    checkResult(decoded, testData.groundTruth);
 }

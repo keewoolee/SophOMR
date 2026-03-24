@@ -1,9 +1,6 @@
 # Build
 build/
 
-# Output
-benchmark.txt
-
 # Hidden files (except .gitignore)
 .*
 !.gitignore

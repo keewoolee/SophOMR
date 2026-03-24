@@ -26,8 +26,6 @@ extern int numrow, numrow_po2;
 extern int b_tilde2, g_tilde2;
 extern int degree_trace;
 extern int degree_trace_half;
-extern int trace_swap;
-extern int trace_shift;
 
 extern param PSparam;
 

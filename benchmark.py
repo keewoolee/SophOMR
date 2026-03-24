@@ -41,9 +41,9 @@ def run_benchmark(scheme, N, k, t=None):
 
     # Build command - OMD doesn't need t parameter
     if scheme == "OMD":
-        cmd = ["./build/test", scheme, str(N), str(k)]
+        cmd = ["./test", scheme, str(N), str(k)]
     else:
-        cmd = ["./build/test", scheme, str(N), str(k), str(t)]
+        cmd = ["./test", scheme, str(N), str(k), str(t)]
 
     results = {name: [] for name in PATTERNS}
 

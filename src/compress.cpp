@@ -1,26 +1,34 @@
 #include "compress.h"
 #include "global.h"
 
-void computeVandermonde(std::vector<std::vector<uint64_t>>& vandermonde)
+namespace {
+
+std::vector<std::vector<uint64_t>> buildVandermondeMatrix(int num_rows, int num_cols)
 {
-    for (size_t j = 0; j < vandermonde[0].size(); j++) {
-        vandermonde[0][j] = j + 1;
+    std::vector<std::vector<uint64_t>> V(num_rows, std::vector<uint64_t>(num_cols));
+    for (int j = 0; j < num_cols; j++) {
+        V[0][j] = j + 1;
     }
-    for (size_t i = 1; i < vandermonde.size(); i++) {
-        for (size_t j = 0; j < vandermonde[0].size(); j++) {
-            vandermonde[i][j] = (vandermonde[i-1][j] * (j + 1)) % ptxt_modulus;
+    for (int i = 1; i < num_rows; i++) {
+        for (int j = 0; j < num_cols; j++) {
+            V[i][j] = (V[i-1][j] * (j + 1)) % ptxt_modulus;
         }
     }
+    return V;
 }
 
 void ringSwitch(lbcrypto::Ciphertext<lbcrypto::DCRTPoly>& digest,
-                const lbcrypto::CryptoContext<lbcrypto::DCRTPoly>& context_comp,
                 const lbcrypto::CryptoContext<lbcrypto::DCRTPoly>& context_trace,
-                const lbcrypto::PublicKey<lbcrypto::DCRTPoly>& publicKey_trace)
+                const std::string& traceKeyTag)
 {
     using namespace std;
     using namespace lbcrypto;
 
+    auto context_comp = digest->GetCryptoContext();
+
+    // Our slot packing layout prioritizes the n/2 axis in the (n/2)×2
+    // rotation structure. This is for the sake of overall readability, at
+    // the cost of this extra masking step.
     vector<int64_t> vec_mask1(degree,0);
     vector<int64_t> vec_mask2(degree,0);
     for (int i = 0; i < degree_trace_half; i++) {
@@ -36,58 +44,61 @@ void ringSwitch(lbcrypto::Ciphertext<lbcrypto::DCRTPoly>& digest,
     digest = context_comp->EvalMult(digest, ptxt_mask1);
     context_comp->EvalAddInPlace(digest, temp);
 
-    digest = context_comp->Compress(digest);
-
-    vector<int64_t> vec_null(degree_trace);
-    auto ptxt_null = context_trace->MakePackedPlaintext(vec_null);
-    auto ctxt_trace = context_trace->Encrypt(publicKey_trace, ptxt_null);
-    ctxt_trace = context_trace->Compress(ctxt_trace);
+    auto traceParams = context_trace->GetCryptoParameters()->GetElementParams();
+    size_t numLimbs = digest->GetElements()[0].GetNumOfElements();
 
     auto poly_comp = digest->GetElements();
-    auto poly_trace = ctxt_trace->GetElements();
-    for (int i = 0; i < 2; i++) {
-        poly_comp[i].SwitchFormat();
-        poly_trace[i].SwitchFormat();
-    }
-    for (int i = 0; i < 2; i++) {
-        NativePoly poly_comp_ = poly_comp[i].GetElementAtIndex(0);
-        NativePoly poly_trace_ = poly_trace[i].GetElementAtIndex(0);
-        for (size_t k = 0; k < poly_trace_.GetLength(); k++) {
-            poly_trace_[k] = poly_comp_[dim_trace * k].Mod(poly_trace_.GetModulus());
-        }
-        poly_trace[i].SetElementAtIndex(0, poly_trace_);
-    }
-    for (int i = 0; i < 2; i++) {
-        poly_trace[i].SwitchFormat();
-    }
-    ctxt_trace->SetElements(poly_trace);
+    for (int i = 0; i < 2; i++) poly_comp[i].SwitchFormat();
 
-    digest = ctxt_trace;
+    std::vector<DCRTPoly> poly_trace(2);
+    for (int i = 0; i < 2; i++) {
+        poly_trace[i] = DCRTPoly(traceParams, Format::COEFFICIENT, true);
+        for (size_t limb = 0; limb < numLimbs; limb++) {
+            auto poly_comp_ = poly_comp[i].GetElementAtIndex(limb);
+            auto poly_trace_ = poly_trace[i].GetElementAtIndex(limb);
+            for (int k = 0; k < degree_trace; k++) {
+                poly_trace_[k] = poly_comp_[dim_trace * k].Mod(poly_trace_.GetModulus());
+            }
+            poly_trace[i].SetElementAtIndex(limb, poly_trace_);
+        }
+        poly_trace[i].SwitchFormat();
+    }
+
+    auto ctxt_trace = std::make_shared<CiphertextImpl<DCRTPoly>>(context_trace);
+    ctxt_trace->SetElements({poly_trace[0], poly_trace[1]});
+    ctxt_trace->SetKeyTag(traceKeyTag);
+    ctxt_trace->SetEncodingType(PACKED_ENCODING);
+    digest = context_trace->Compress(ctxt_trace);
 }
 
-void compress(lbcrypto::Ciphertext<lbcrypto::DCRTPoly>& digest,
+}  // namespace
+
+lbcrypto::Ciphertext<lbcrypto::DCRTPoly> compress(
                 std::vector<lbcrypto::Ciphertext<lbcrypto::DCRTPoly>>& PV,
                 const std::vector<std::vector<uint32_t>>& payloads,
                 const lbcrypto::CryptoContext<lbcrypto::DCRTPoly>& context_comp,
                 const lbcrypto::CryptoContext<lbcrypto::DCRTPoly>& context_trace,
-                const lbcrypto::PublicKey<lbcrypto::DCRTPoly>& publicKey_comp,
-                const lbcrypto::PublicKey<lbcrypto::DCRTPoly>& publicKey_trace,
-                const lbcrypto::PrivateKey<lbcrypto::DCRTPoly>& privateKey_comp)
+                const lbcrypto::EvalKey<lbcrypto::DCRTPoly>& swk,
+                const std::string& traceKeyTag)
 {
     using namespace std;
     using namespace lbcrypto;
 
-    vector<int64_t> vec_null(degree);
-    auto ptxt_null = context_comp->MakePackedPlaintext(vec_null);
+    auto vandermonde = buildVandermondeMatrix(num_pertinent, payloads.size());
+
+    Ciphertext<DCRTPoly> digest;
+
+    auto context = PV[0]->GetCryptoContext();
     for(int i = 0; i < numctxt; i++){
-        auto ctxt_temp = context_comp->Encrypt(publicKey_comp, ptxt_null);
+        PV[i] = context->Compress(PV[i], 2);
+        context->GetScheme()->KeySwitchInPlace(PV[i], swk);
+        // Re-wrap in context_comp
+        auto ctxt_temp = std::make_shared<CiphertextImpl<DCRTPoly>>(context_comp);
         ctxt_temp->SetElements(PV[i]->GetElements());
+        ctxt_temp->SetKeyTag(swk->GetKeyTag());
+        ctxt_temp->SetEncodingType(PACKED_ENCODING);
         PV[i] = ctxt_temp;
     }
-
-    // Precompute Vandermonde
-    vector<vector<uint64_t>> vandermonde(num_pertinent, vector<uint64_t>(payloads.size()));
-    computeVandermonde(vandermonde);
 
     // Baby-step
     vector<vector<Ciphertext<DCRTPoly>>> rotated_PV(numctxt, vector<Ciphertext<DCRTPoly>>(b_tilde2));
@@ -172,5 +183,7 @@ void compress(lbcrypto::Ciphertext<lbcrypto::DCRTPoly>& digest,
     context_comp->EvalAddInPlace(digest, temp);
 
     // Ring-Switching
-    ringSwitch(digest, context_comp, context_trace, publicKey_trace);
+    ringSwitch(digest, context_trace, traceKeyTag);
+
+    return digest;
 }

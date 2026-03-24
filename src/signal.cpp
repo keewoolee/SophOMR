@@ -8,6 +8,8 @@ PSsk PSskGen(const param& param)
     return sk;
 }
 
+namespace {
+
 std::vector<std::vector<uint64_t>> expand(NativeVector a, int n, int q) {
     std::vector<std::vector<uint64_t>> res(n);
 
@@ -45,6 +47,7 @@ NativeVector ringMult(NativeVector a, NativeVector b, int n, int q, int ell)
     return res;
 }
 
+}  // namespace
 
 PSpk PSpkGen(const param& param, const PSsk& sk)
 {

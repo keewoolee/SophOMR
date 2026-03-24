@@ -24,17 +24,14 @@ This is a proof of concept implementation of SophOMR, an oblivious message retri
 
 1. Install CMake, GMP, and NTL (if needed).
 
-```
+```bash
 sudo apt-get update
-sudo apt-get install build-essential
-sudo apt-get install cmake
-sudo apt-get install libgmp3-dev
-sudo apt-get install libntl-dev
+sudo apt-get install build-essential cmake libgmp3-dev libntl-dev
 ```
 
 2. Install [OpenFHE + HEXL](https://github.com/openfheorg/openfhe-hexl) by following the instruction in the link, or run:
 
-```
+```bash
 git clone https://github.com/openfheorg/openfhe-configurator.git
 cd openfhe-configurator
 scripts/configure.sh
@@ -47,7 +44,7 @@ sudo scripts/build-openfhe-development.sh
 
 3. Build the library.
 
-```
+```bash
 cd ..  # if still in openfhe-configurator directory
 git clone https://github.com/keewoolee/SophOMR.git  # clone this repository
 cd SophOMR
@@ -59,20 +56,19 @@ make
 
 4. Basic test. This runs the fastest predefined configuration (1-2 compute-minutes). On success, the final line of the output will be: `Result is Correct!`
 
-```
+```bash
 ./test OMD 65536 16
 ```
 
 ## To Run
 
 - To run all benchmarks presented in the paper (6-7 compute-hours):
-```
-cd ..  # if still in build directory
-python3 -u benchmark.py > benchmark.txt 2>&1
+```bash
+python3 -u ../benchmark.py > benchmark.txt 2>&1
 ```
 
 - To run with predefined parameters:
-```
+```bash
 # ./test OMR <N> <k> <t>    (OMR requires payload size t)
 # ./test OMD <N> <k>        (OMD has no payload)
 # N: number of transactions
@@ -104,8 +100,12 @@ python3 -u benchmark.py > benchmark.txt 2>&1
 ./test OMD 65536 128
 ```
 
-- To run with custom parameters (Recommended only if you are sufficiently knowledgeable, as custom parameters may result in incorrect, insecure, or inefficient outcomes.):
-```
-# Customize the parameters in global.h. (Preset to parameters for "./test OMR 65536 50 250")
+### Custom parameters
+
+To run with custom parameters, modify the values in `src/global.cpp` and rebuild:
+
+```bash
 ./test
 ```
+
+⚠️ Custom parameters may result in incorrect, insecure, or inefficient outcomes. Only recommended if you are sufficiently knowledgeable.

@@ -24,8 +24,6 @@ int numrow, numrow_po2;
 int b_tilde2, g_tilde2;
 int degree_trace;
 int degree_trace_half;
-int trace_swap;
-int trace_shift;
 
 param PSparam(1024, ptxt_modulus, 2, 80, 0.5);
 

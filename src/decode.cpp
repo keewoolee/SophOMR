@@ -3,6 +3,8 @@
 
 #include <NTL/ZZ_pXFactoring.h>
 
+namespace {
+
 bool compare_ZZ_p(NTL::ZZ_p i, NTL::ZZ_p j) { return (NTL::conv<int>(i) < NTL::conv<int>(j)); }
 
 void decodeIdx(std::vector<NTL::ZZ_p>& idx_ZZ_p, const std::vector<int64_t>& digest_idx)
@@ -87,23 +89,15 @@ void decodePayload(std::vector<std::vector<uint32_t>>& decodedPayload,
     }
 }
 
-void decode(std::vector<int>& decodedIdx,
-                std::vector<std::vector<uint32_t>>& decodedPayload,
-                const lbcrypto::Ciphertext<lbcrypto::DCRTPoly>& digest,
-                const lbcrypto::CryptoContext<lbcrypto::DCRTPoly>& context,
+}  // namespace
+
+DecodeResult decode(const lbcrypto::Ciphertext<lbcrypto::DCRTPoly>& digest,
                 const lbcrypto::PrivateKey<lbcrypto::DCRTPoly>& HEsk)
 {
+    auto context = digest->GetCryptoContext();
     lbcrypto::Plaintext digest_pt;
     context->Decrypt(HEsk, digest, &digest_pt);
     std::vector<int64_t> digest_vec = digest_pt->GetPackedValue();
-
-    if (trace_swap == 1) {
-        for (int i = 0; i < degree_trace_half; i++) {
-            std::swap(digest_vec[i], digest_vec[i + degree_trace_half]);
-        }
-    }
-    rotate(digest_vec.begin(), digest_vec.begin() + degree_trace_half - trace_shift, digest_vec.begin() + degree_trace_half);
-    rotate(digest_vec.begin() + degree_trace_half, digest_vec.begin() + degree_trace - trace_shift, digest_vec.begin() + degree_trace);
 
     std::vector<int64_t> digest_idx(num_pertinent);
     std::vector<std::vector<int64_t>> digest_payload(payload_len, std::vector<int64_t>(num_pertinent));
@@ -120,26 +114,21 @@ void decode(std::vector<int>& decodedIdx,
     NTL::ZZ_p::init(p);
     std::vector<NTL::ZZ_p> idx_ZZ_p;
 
+    DecodeResult result;
     decodeIdx(idx_ZZ_p, digest_idx);
-    decodePayload(decodedPayload, digest_payload, idx_ZZ_p);
+    decodePayload(result.payloads, digest_payload, idx_ZZ_p);
 
-    decodedIdx.resize(idx_ZZ_p.size());
-    for (size_t i = 0; i < decodedIdx.size(); i++) {
-        decodedIdx[i] = NTL::conv<int>(idx_ZZ_p[i]) - 1;
+    result.indices.resize(idx_ZZ_p.size());
+    for (size_t i = 0; i < result.indices.size(); i++) {
+        result.indices[i] = NTL::conv<int>(idx_ZZ_p[i]) - 1;
     }
+
+    return result;
 }
 
-void checkResult(const std::vector<int>& decodedIdx,
-                    const std::vector<std::vector<uint32_t>>& decodedPayload,
-                    const std::vector<int>& pertinentIdx,
-                    const std::vector<std::vector<uint32_t>>& payloads)
+void checkResult(const DecodeResult& decoded, const GroundTruth& groundTruth)
 {
-    std::vector<std::vector<uint32_t>> pertinentPayload(pertinentIdx.size(), std::vector<uint32_t>(payload_len));
-    for (size_t i = 0; i < pertinentIdx.size(); i++) {
-        pertinentPayload[i] = payloads[pertinentIdx[i]];
-    }
-
-    if (pertinentIdx == decodedIdx && pertinentPayload == decodedPayload) {
+    if (groundTruth.pertinentIdx == decoded.indices && groundTruth.pertinentPayloads == decoded.payloads) {
         std::cout << "Result is Correct!" << std::endl;
     } else {
         std::cout << "Something went Wrong!" << std::endl;

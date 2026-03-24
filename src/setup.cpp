@@ -1,6 +1,7 @@
 #include "setup.h"
 #include "global.h"
 #include "signal.h"
+#include "encoding/encodingparams.h"
 
 #include "ciphertext-ser.h"
 #include "key/key-ser.h"
@@ -33,6 +34,26 @@ void initBFVparam(lbcrypto::CCParams<lbcrypto::CryptoContextBFVRNS>& BFVparam)
     BFVparam.SetNumLargeDigits(NumLargeDigits);
     BFVparam.SetScalingModSize(ScalingModSize);
     BFVparam.SetMultiplicativeDepth(MultiplicativeDepth);
+}
+
+void initBFVparam_comp(lbcrypto::CCParams<lbcrypto::CryptoContextBFVRNS>& BFVparam)
+{
+    BFVparam.SetRingDim(degree);
+    BFVparam.SetPlaintextModulus(ptxt_modulus);
+    BFVparam.SetKeySwitchTechnique(lbcrypto::HYBRID);
+    BFVparam.SetNumLargeDigits(NumLargeDigits_comp);
+    BFVparam.SetScalingModSize(ScalingModSize);
+    BFVparam.SetMultiplicativeDepth(MultiplicativeDepth_comp);
+}
+
+void initBFVparam_trace(lbcrypto::CCParams<lbcrypto::CryptoContextBFVRNS>& BFVparam)
+{
+    BFVparam.SetRingDim(degree_trace);
+    BFVparam.SetPlaintextModulus(ptxt_modulus);
+    BFVparam.SetKeySwitchTechnique(lbcrypto::HYBRID);
+    BFVparam.SetNumLargeDigits(NumLargeDigits_comp);
+    BFVparam.SetScalingModSize(ScalingModSize);
+    BFVparam.SetMultiplicativeDepth(MultiplicativeDepth_comp);
 }
 
 void enable(lbcrypto::CryptoContext<lbcrypto::DCRTPoly>& context)
@@ -84,53 +105,66 @@ void liftsk(lbcrypto::KeyPair<lbcrypto::DCRTPoly>& keyPair_comp, const lbcrypto:
     keyPair_comp.secretKey->SetPrivateElement(sk_comp);
 }
 
-void updateTraceInfo(const lbcrypto::CryptoContext<lbcrypto::DCRTPoly>& context_comp,
-                        const lbcrypto::CryptoContext<lbcrypto::DCRTPoly>& context_trace,
-                        const lbcrypto::KeyPair<lbcrypto::DCRTPoly>& keyPair_comp,
-                        const lbcrypto::KeyPair<lbcrypto::DCRTPoly>& keyPair_trace)
+void injectCompatibleRoot()
 {
-    using namespace std;
     using namespace lbcrypto;
 
-    vector<int64_t> vec(degree,0);
-    for (int i = 0; i < degree_trace_half; i++) {
-        vec[i] = i * dim_trace;
-        vec[i + degree_half] = (i + degree_trace_half)* dim_trace;
-    }
-    Plaintext ptxt = context_comp->MakePackedPlaintext(vec);
-    Ciphertext<DCRTPoly> ctxt_comp = context_comp->Encrypt(keyPair_comp.secretKey, ptxt);
-    ctxt_comp = context_comp->Compress(ctxt_comp);
+    uint32_t mMain = 2 * degree;
+    uint32_t mTrace = 2 * degree_trace;
+    NativeInteger p(ptxt_modulus);
 
-    vector<int64_t> vec_null(degree_trace);
-    auto ptxt_null = context_trace->MakePackedPlaintext(vec_null);
-    auto ctxt_trace = context_trace->Encrypt(keyPair_trace.secretKey, ptxt_null);
-    ctxt_trace = context_trace->Compress(ctxt_trace);
+    NativeInteger zetaMain = RootOfUnity<NativeInteger>(mMain, p);
+    NativeInteger zetaTrace = zetaMain.ModExp(dim_trace, p);
 
-    auto poly_comp = ctxt_comp->GetElements();
-    auto poly_trace = ctxt_trace->GetElements();
-    for (int i = 0; i < 2; i++) {
-        poly_comp[i].SwitchFormat();
-        poly_trace[i].SwitchFormat();
-    }
-    for (int i = 0; i < 2; i++) {
-        NativePoly poly_comp_ = poly_comp[i].GetElementAtIndex(0);
-        NativePoly poly_trace_ = poly_trace[i].GetElementAtIndex(0);
-        for (size_t k = 0; k < poly_trace_.GetLength(); k++) {
-            poly_trace_[k] = poly_comp_[dim_trace * k].Mod(poly_trace_.GetModulus());
-        }
-        poly_trace[i].SetElementAtIndex(0, poly_trace_);
-    }
-    for (int i = 0; i < 2; i++) {
-        poly_trace[i].SwitchFormat();
-    }
-    ctxt_trace->SetElements(poly_trace);
+    PackedEncoding::Destroy();
 
-    Plaintext ptxt_res;
-    context_trace->Decrypt(keyPair_trace.secretKey, ctxt_trace, &ptxt_res);
-    vector<int64_t> vec_res = ptxt_res->GetPackedValue();
+    auto mainParams = std::make_shared<EncodingParamsImpl>(ptxt_modulus);
+    mainParams->SetPlaintextRootOfUnity(zetaMain);
+    PackedEncoding::SetParams(mMain, mainParams);
 
-    trace_swap = vec_res[0] / degree_trace_half;
-    trace_shift = vec_res[0] % degree_trace_half;
+    auto traceParams = std::make_shared<EncodingParamsImpl>(ptxt_modulus);
+    traceParams->SetPlaintextRootOfUnity(zetaTrace);
+    PackedEncoding::SetParams(mTrace, traceParams);
+}
+
+lbcrypto::CryptoContext<lbcrypto::DCRTPoly> GenCryptoContextWithModuliFrom(
+    const lbcrypto::CCParams<lbcrypto::CryptoContextBFVRNS>& params,
+    const lbcrypto::CryptoContext<lbcrypto::DCRTPoly>& sourceContext)
+{
+    using namespace lbcrypto;
+
+    auto cc = GenCryptoContext(params);
+
+    auto sourceElemParams = sourceContext->GetCryptoParameters()->GetElementParams();
+    auto targetElemParams = cc->GetCryptoParameters()->GetElementParams();
+
+    size_t numTowers = std::min(targetElemParams->GetParams().size(),
+                                sourceElemParams->GetParams().size());
+
+    std::vector<NativeInteger> moduli(numTowers);
+    std::vector<NativeInteger> roots(numTowers);
+    for (size_t i = 0; i < numTowers; i++) {
+        moduli[i] = sourceElemParams->GetParams()[i]->GetModulus();
+        auto sourceRoot = sourceElemParams->GetParams()[i]->GetRootOfUnity();
+        roots[i] = sourceRoot.ModExp(NativeInteger(dim_trace), moduli[i]);
+    }
+
+    auto elementParams = std::make_shared<ILDCRTParams<BigInteger>>(
+        2 * degree_trace, moduli, roots);
+
+    auto cryptoParams = std::dynamic_pointer_cast<CryptoParametersBFVRNS>(
+        std::const_pointer_cast<CryptoParametersBase<DCRTPoly>>(cc->GetCryptoParameters()));
+    cryptoParams->SetElementParams(elementParams);
+    cryptoParams->PrecomputeCRTTables(
+        cryptoParams->GetKeySwitchTechnique(),
+        cryptoParams->GetScalingTechnique(),
+        cryptoParams->GetEncryptionTechnique(),
+        cryptoParams->GetMultiplicationTechnique(),
+        cryptoParams->GetNumPerPartQ(),
+        cryptoParams->GetAuxBits(),
+        cryptoParams->GetExtraBits());
+
+    return cc;
 }
 
 void printParam(const lbcrypto::CryptoContext<lbcrypto::DCRTPoly>& context,
@@ -174,6 +208,8 @@ void saveKeys(const lbcrypto::CryptoContext<lbcrypto::DCRTPoly>& context,
 
     lbcrypto::Serial::SerializeToFile("data/swk.txt", swk, lbcrypto::SerType::BINARY);
 }
+
+namespace {
 
 void simulatePayloads(std::vector<std::vector<uint32_t>>& payloads)
 {
@@ -227,4 +263,28 @@ void simulateSignals(std::vector<std::vector<uint64_t>>& signals_a,
             signals_b[i][j] = sig.b[j].ConvertToInt();
         }
     }
+}
+
+}  // namespace
+
+TestData generateTestData(const PSpk& PSpk)
+{
+    TestData data;
+    data.payloads.assign(num_transaction, std::vector<uint32_t>(payload_len));
+    simulatePayloads(data.payloads);
+
+    std::vector<int> pertinentIdx;
+    sampleIdx(pertinentIdx);
+
+    data.signals.a.assign(num_transaction, std::vector<uint64_t>(PSparam.n));
+    data.signals.b.assign(num_transaction, std::vector<uint64_t>(PSparam.ell));
+    simulateSignals(data.signals.a, data.signals.b, pertinentIdx, PSpk);
+
+    data.groundTruth.pertinentIdx = pertinentIdx;
+    data.groundTruth.pertinentPayloads.resize(pertinentIdx.size());
+    for (size_t i = 0; i < pertinentIdx.size(); i++) {
+        data.groundTruth.pertinentPayloads[i] = data.payloads[pertinentIdx[i]];
+    }
+
+    return data;
 }

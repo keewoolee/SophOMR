@@ -1,12 +1,16 @@
 #include "detect.h"
 #include "global.h"
 
-void affine(std::vector<std::vector<lbcrypto::Ciphertext<lbcrypto::DCRTPoly>>>& output,
-            const std::vector<std::vector<uint64_t>>& signals_a,
-            const std::vector<std::vector<uint64_t>>& signals_b,
-            const lbcrypto::CryptoContext<lbcrypto::DCRTPoly>& context,
-            const lbcrypto::Ciphertext<lbcrypto::DCRTPoly>& PSsk_enc)
+namespace {
+
+std::vector<std::vector<lbcrypto::Ciphertext<lbcrypto::DCRTPoly>>>
+affine(const Signals& signals,
+       const lbcrypto::Ciphertext<lbcrypto::DCRTPoly>& PSsk_enc)
 {
+    auto context = PSsk_enc->GetCryptoContext();
+    std::vector<std::vector<lbcrypto::Ciphertext<lbcrypto::DCRTPoly>>> output(
+        numctxt, std::vector<lbcrypto::Ciphertext<lbcrypto::DCRTPoly>>(PSparam.ell));
+
     // Baby-step
     std::vector<lbcrypto::Ciphertext<lbcrypto::DCRTPoly>> PSsk_bs(b_tilde1);
     PSsk_bs[0] = PSsk_enc;
@@ -31,9 +35,9 @@ void affine(std::vector<std::vector<lbcrypto::Ciphertext<lbcrypto::DCRTPoly>>>& 
                     for(int m = 0; m < degree; m++){
                         int idxc = (k + m) % PSparam.n;
                         if (idxc <= l) {
-                            vec_ints[m] = signals_a[idx + m][l - idxc];
+                            vec_ints[m] = signals.a[idx + m][l - idxc];
                         } else {
-                            vec_ints[m] = PSparam.q - signals_a[idx + m][PSparam.n + l - idxc];
+                            vec_ints[m] = PSparam.q - signals.a[idx + m][PSparam.n + l - idxc];
                             if (vec_ints[m] == PSparam.q) { vec_ints[m] = 0; }
                         }
                     }
@@ -61,16 +65,20 @@ void affine(std::vector<std::vector<lbcrypto::Ciphertext<lbcrypto::DCRTPoly>>>& 
 
         for (int l = 0; l < PSparam.ell; l++){
             for(int m = 0; m < degree; m++){
-                vec_ints[m] = signals_b[idx + m][l];
+                vec_ints[m] = signals.b[idx + m][l];
             }
             auto pt = context->MakePackedPlaintext(vec_ints);
             output[i][l] = context->EvalSub(output[i][l], pt);
         }
     }
+
+    return output;
 }
 
-void powers(std::vector<lbcrypto::Ciphertext<lbcrypto::DCRTPoly>>& inplace, const lbcrypto::CryptoContext<lbcrypto::DCRTPoly>& context)
+void powers(std::vector<lbcrypto::Ciphertext<lbcrypto::DCRTPoly>>& inplace)
 {
+    auto context = inplace[0]->GetCryptoContext();
+
     inplace[1] = inplace[0];
     for (size_t i = 2; i < inplace.size(); i++) {
         if(i % 2 == 0){
@@ -82,19 +90,20 @@ void powers(std::vector<lbcrypto::Ciphertext<lbcrypto::DCRTPoly>>& inplace, cons
 }
 
 void patersonStockmeyer(lbcrypto::Ciphertext<lbcrypto::DCRTPoly>& inplace,
-                            const std::vector<std::vector<uint32_t>>& coeff,
-                            const lbcrypto::CryptoContext<lbcrypto::DCRTPoly>& context)
+                            const std::vector<std::vector<uint32_t>>& coeff)
 {
+    auto context = inplace->GetCryptoContext();
+
     int numbs = coeff[0].size();
     int numgs = coeff.size();
 
     std::vector<lbcrypto::Ciphertext<lbcrypto::DCRTPoly>> bs(numbs+1);
     bs[0] = inplace;
-    powers(bs, context);
+    powers(bs);
 
     std::vector<lbcrypto::Ciphertext<lbcrypto::DCRTPoly>> gs(numgs);
     gs[0] = bs[numbs];
-    powers(gs, context);
+    powers(gs);
 
     lbcrypto::Ciphertext<lbcrypto::DCRTPoly> hoist;
 
@@ -130,8 +139,10 @@ void patersonStockmeyer(lbcrypto::Ciphertext<lbcrypto::DCRTPoly>& inplace,
     context->EvalAddInPlace(inplace, hoist);
 }
 
-void FLT(lbcrypto::Ciphertext<lbcrypto::DCRTPoly>& inplace, const lbcrypto::CryptoContext<lbcrypto::DCRTPoly>& context)
+void FLT(lbcrypto::Ciphertext<lbcrypto::DCRTPoly>& inplace)
 {
+    auto context = inplace->GetCryptoContext();
+
     lbcrypto::Ciphertext<lbcrypto::DCRTPoly> curr = inplace;
 
     auto pow = ptxt_modulus - 1;
@@ -153,9 +164,10 @@ void FLT(lbcrypto::Ciphertext<lbcrypto::DCRTPoly>& inplace, const lbcrypto::Cryp
     }
 }
 
-lbcrypto::Ciphertext<lbcrypto::DCRTPoly> product(std::vector<lbcrypto::Ciphertext<lbcrypto::DCRTPoly>>& input,
-                                                    const lbcrypto::CryptoContext<lbcrypto::DCRTPoly>& context)
+lbcrypto::Ciphertext<lbcrypto::DCRTPoly> product(std::vector<lbcrypto::Ciphertext<lbcrypto::DCRTPoly>>& input)
 {
+    auto context = input[0]->GetCryptoContext();
+
     while(input.size() != 1){
         for(size_t i = 0; i < input.size()/2; i++){
             input[i] = context->EvalMult(input[i], input[input.size()/2+i]);
@@ -171,11 +183,11 @@ lbcrypto::Ciphertext<lbcrypto::DCRTPoly> product(std::vector<lbcrypto::Ciphertex
     return input[0];
 }
 
-void rangeCheck(std::vector<lbcrypto::Ciphertext<lbcrypto::DCRTPoly>>& output,
-                    std::vector<std::vector<lbcrypto::Ciphertext<lbcrypto::DCRTPoly>>>& input,
-                    const lbcrypto::CryptoContext<lbcrypto::DCRTPoly>& context,
-                    const lbcrypto::EvalKey<lbcrypto::DCRTPoly>& swk)
+std::vector<lbcrypto::Ciphertext<lbcrypto::DCRTPoly>>
+rangeCheck(std::vector<std::vector<lbcrypto::Ciphertext<lbcrypto::DCRTPoly>>>& input)
 {
+    auto context = input[0][0]->GetCryptoContext();
+
     // One-vector for Logical Negation
     std::vector<int64_t> vec_one(degree, 1);
     auto ptxt_one = context->MakePackedPlaintext(vec_one);
@@ -185,41 +197,38 @@ void rangeCheck(std::vector<lbcrypto::Ciphertext<lbcrypto::DCRTPoly>>& output,
             context->EvalSquareInPlace(input[i][j]);
 
             // Zeroize
-            patersonStockmeyer(input[i][j], coeff_rangeCheck, context);
+            patersonStockmeyer(input[i][j], coeff_rangeCheck);
 
             // Fermat's Little Theorem
-            FLT(input[i][j], context);
+            FLT(input[i][j]);
 
             // Logical Negation
             input[i][j] = context->EvalSub(ptxt_one, input[i][j]);
         }
     }
 
+    std::vector<lbcrypto::Ciphertext<lbcrypto::DCRTPoly>> PV(numctxt);
     for (int i = 0; i < numctxt; i++){
-        output[i] = product(input[i], context);
-        output[i] = context->Compress(output[i], 2);
-        context->GetScheme()->KeySwitchInPlace(output[i], swk);
+        PV[i] = product(input[i]);
     }
+    return PV;
 }
 
-void detect(std::vector<lbcrypto::Ciphertext<lbcrypto::DCRTPoly>>& output,
-                const std::vector<std::vector<uint64_t>>& signals_a,
-                const std::vector<std::vector<uint64_t>>& signals_b,
-                const lbcrypto::CryptoContext<lbcrypto::DCRTPoly>& context,
-                const lbcrypto::Ciphertext<lbcrypto::DCRTPoly>& PSsk_enc,
-                const lbcrypto::EvalKey<lbcrypto::DCRTPoly>& swk)
+}  // namespace
+
+std::vector<lbcrypto::Ciphertext<lbcrypto::DCRTPoly>> detect(
+                const Signals& signals,
+                const lbcrypto::Ciphertext<lbcrypto::DCRTPoly>& PSsk_enc)
 {
     using namespace std;
     using namespace lbcrypto;
 
     chrono::high_resolution_clock::time_point clock_start, clock_end;
 
-    vector<vector<Ciphertext<DCRTPoly>>> PV_ell(numctxt, vector<Ciphertext<DCRTPoly>>(PSparam.ell));
-
     cout << "\t\t Affine Transform Started!\n" << endl;
     clock_start = chrono::high_resolution_clock::now();
 
-    affine(PV_ell, signals_a, signals_b, context, PSsk_enc);
+    auto residuals = affine(signals, PSsk_enc);
 
     clock_end = chrono::high_resolution_clock::now();
     cout << "\t\t Affine Transform Finished!" << endl;
@@ -229,9 +238,11 @@ void detect(std::vector<lbcrypto::Ciphertext<lbcrypto::DCRTPoly>>& output,
     cout << "\t\t RangeCheck Started!\n" << endl;
     clock_start = chrono::high_resolution_clock::now();
 
-    rangeCheck(output, PV_ell, context, swk);
+    auto PV = rangeCheck(residuals);
 
     clock_end = chrono::high_resolution_clock::now();
     cout << "\t\t RangeCheck Finished!" << endl;
     cout << "\t\t RangeCheck time: " << chrono::duration<double>(clock_end - clock_start).count() << "sec\n" << endl;
+
+    return PV;
 }

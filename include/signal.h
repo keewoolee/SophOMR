@@ -19,7 +19,5 @@ struct Signal {
 typedef Signal PSpk;
 
 PSsk PSskGen(const param& param);
-std::vector<std::vector<uint64_t>> expand(NativeVector a, int n, int q);
-NativeVector ringMult(NativeVector a, NativeVector b, int n, int q, int ell);
 PSpk PSpkGen(const param& param, const PSsk& sk);
 void PSsignal(Signal& sig, const PSpk& pk, const param& param);
