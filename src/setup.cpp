@@ -160,7 +160,7 @@ lbcrypto::CryptoContext<lbcrypto::DCRTPoly> GenCryptoContextWithModuliFrom(
         cryptoParams->GetScalingTechnique(),
         cryptoParams->GetEncryptionTechnique(),
         cryptoParams->GetMultiplicationTechnique(),
-        cryptoParams->GetNumPerPartQ(),
+        cryptoParams->GetNumPartQ(),
         cryptoParams->GetAuxBits(),
         cryptoParams->GetExtraBits());
 
